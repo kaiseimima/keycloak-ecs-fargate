@@ -47,18 +47,18 @@ class KeycloakInfrastructureStack(Stack):
         )
 
         # ALB
-        lb = elbv2.ApplicationLoadBalancer(self, 'LB',
-                                           vpc=vpc,
-                                           vpc_subnets=ec2.SubnetSelection(
-                                               subnet_type=ec2.SubnetType.PUBLIC
-                                           ),
-                                           internet_facing=True
-                                           )
+        self.lb = elbv2.ApplicationLoadBalancer(self, 'LB',
+                                                vpc=vpc,
+                                                vpc_subnets=ec2.SubnetSelection(
+                                                    subnet_type=ec2.SubnetType.PUBLIC
+                                                    ),
+                                                internet_facing=True
+                                                )
         
-        listener = lb.add_listener('Listener',
-                                  port=80,
-                                  open=True
-                                  )
+        self.listener = self.lb.add_listener('Listener',
+                                             port=80,
+                                             open=True
+                                             )
         
         # DB (auroraPostgreSQL)
         db_cluster = rds.DatabaseCluster(self, 'AuroraCluster',
@@ -81,67 +81,63 @@ class KeycloakInfrastructureStack(Stack):
         )
 
         # ecsCluster
-        ecs_cluster = ecs.Cluster(self, 'EcsCluster',
-                                  cluster_name='keycloak-ecs-cluster',
-                                  container_insights=True,
-                                  enable_fargate_capacity_providers=True,
-                                  vpc=vpc
-                                  )
+        self.ecs_cluster = ecs.Cluster(self, 'EcsCluster',
+                                       cluster_name='keycloak-ecs-cluster',
+                                       container_insights=True,
+                                       enable_fargate_capacity_providers=True,
+                                       vpc=vpc
+                                       )
         
 
-        ##################################  test with using nginx ######################################
-        # Fargate Task Definition
-        ecs_task_definition = ecs.FargateTaskDefinition(self, 'TaskDefinition',
-                                                        runtime_platform=ecs.RuntimePlatform(
-                                                            operating_system_family=ecs.OperatingSystemFamily.LINUX,
-                                                            cpu_architecture=ecs.CpuArchitecture.X86_64
-                                                        ),
-                                                        cpu=256,
-                                                        memory_limit_mib=512
-        )
+        # ##################################  test with using nginx ######################################
+        # # Fargate Task Definition
+        # ecs_task_definition = ecs.FargateTaskDefinition(self, 'TaskDefinition',
+        #                                                 runtime_platform=ecs.RuntimePlatform(
+        #                                                     operating_system_family=ecs.OperatingSystemFamily.LINUX,
+        #                                                     cpu_architecture=ecs.CpuArchitecture.X86_64
+        #                                                 ),
+        #                                                 cpu=256,
+        #                                                 memory_limit_mib=512
+        # )
 
-        # log_group = logs.LogGroup(self, 'EcsLogGroup', 
-        #                           retention=logs.RetentionDays.ONE_WEEK  # ログの保持期間を設定
-        #                           )
+        # # log_group = logs.LogGroup(self, 'EcsLogGroup', 
+        # #                           retention=logs.RetentionDays.ONE_WEEK  # ログの保持期間を設定
+        # #                           )
 
-        # Container
-        container = ecs_task_definition.add_container('nginx',
-                                                    image=ecs.ContainerImage.from_registry('nginx'),
-                                                    # logging=ecs.LogDriver.aws_logs(
-                                                    #     stream_prefix='nginx',  # CloudWatch Logsに表示されるログのプレフィックス
-                                                    #     log_group=log_group
-                                                    #     ),
-                                                    port_mappings=[
-                                                        ecs.PortMapping(
-                                                            container_port=80,
-                                                             protocol=ecs.Protocol.TCP
-                                                        )
-                                                    ]
-        )
+        # # Container
+        # container = ecs_task_definition.add_container('nginx',
+        #                                             image=ecs.ContainerImage.from_registry('nginx'),
+        #                                             # logging=ecs.LogDriver.aws_logs(
+        #                                             #     stream_prefix='nginx',  # CloudWatch Logsに表示されるログのプレフィックス
+        #                                             #     log_group=log_group
+        #                                             #     ),
+        #                                             port_mappings=[
+        #                                                 ecs.PortMapping(
+        #                                                     container_port=80,
+        #                                                      protocol=ecs.Protocol.TCP
+        #                                                 )
+        #                                             ]
+        # )
 
-        # Ecs Service
-        ecs_service = ecs.FargateService(self, 'EcsService',
-                                         cluster=ecs_cluster,
-                                         task_definition=ecs_task_definition,
-                                         vpc_subnets=ec2.SubnetSelection(
-                                             subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS
-                                             )
-                                             )
+        # # Ecs Service
+        # ecs_service = ecs.FargateService(self, 'EcsService',
+        #                                  cluster=ecs_cluster,
+        #                                  task_definition=ecs_task_definition,
+        #                                  vpc_subnets=ec2.SubnetSelection(
+        #                                      subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS
+        #                                      )
+        #                                      )
         
-        # ALB TargetGroup
-        ecs_service.register_load_balancer_targets(
-            ecs.EcsTarget(
-                container_name='nginx',
-                container_port=80,
-                new_target_group_id='ECS',
-                listener=ecs.ListenerConfig.application_listener(
-                    listener,
-                    protocol=elbv2.ApplicationProtocol.HTTP
-                )
-            )
-        )
-        #################################################################################################
-
-
-        
-
+        # # ALB TargetGroup
+        # ecs_service.register_load_balancer_targets(
+        #     ecs.EcsTarget(
+        #         container_name='nginx',
+        #         container_port=80,
+        #         new_target_group_id='ECS',
+        #         listener=ecs.ListenerConfig.application_listener(
+        #             listener,
+        #             protocol=elbv2.ApplicationProtocol.HTTP
+        #         )
+        #     )
+        # )
+        # #################################################################################################

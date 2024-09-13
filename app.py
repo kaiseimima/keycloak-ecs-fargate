@@ -5,9 +5,14 @@ import aws_cdk as cdk
 
 # from keycloak_ecs_fargate.keycloak_ecs_fargate_stack import KeycloakEcsFargateStack
 from keycloak_ecs_fargate.keycloak_infrastructure_stack import KeycloakInfrastructureStack
+from keycloak_ecs_fargate.ecs_stack import EcsStack
 
 
 app = cdk.App()
-KeycloakInfrastructureStack(app, "KeycloakInfrastructureStack")
+infrastructure_stack = KeycloakInfrastructureStack(app, "KeycloakInfrastructureStack")
+ecs_stack = EcsStack(app, "EcsStack",
+                     ecs_cluster=infrastructure_stack.ecs_cluster,
+                     listener=infrastructure_stack.listener
+)
 
 app.synth()
