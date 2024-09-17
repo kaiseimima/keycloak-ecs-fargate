@@ -27,8 +27,8 @@ class EcsStack(Stack):
         )
 
         # Container
-        container = ecs_task_definition.add_container('nginx',
-                                                      image=ecs.ContainerImage.from_registry('nginx'),
+        container = ecs_task_definition.add_container('keycloak',
+                                                      image=ecs.ContainerImage.from_registry('quay.io/keycloak/keycloak:24.0'),
                                                       port_mappings=[
                                                           ecs.PortMapping(
                                                               container_port=80,
@@ -49,7 +49,7 @@ class EcsStack(Stack):
         # ALB TargetGroup
         ecs_service.register_load_balancer_targets(
             ecs.EcsTarget(
-                container_name='nginx',
+                container_name='keycloak',
                 container_port=80,
                 new_target_group_id='ECS',
                 listener=ecs.ListenerConfig.application_listener(
