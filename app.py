@@ -10,9 +10,12 @@ from keycloak_ecs_fargate.ecs_stack import EcsStack
 
 app = cdk.App()
 infrastructure_stack = KeycloakInfrastructureStack(app, "KeycloakInfrastructureStack")
-ecs_stack = EcsStack(app, "EcsStack",
-                     ecs_cluster=infrastructure_stack.ecs_cluster,
-                     listener=infrastructure_stack.listener
-)
+# ecs_stack = EcsStack(app, "EcsStack",
+#                      ecs_cluster=infrastructure_stack.ecs_cluster,
+#                      listener=infrastructure_stack.listener,
+#                     #  db_cluster=infrastructure_stack.db_cluster,
+#                      db_instance=infrastructure_stack.db_instance,
+#                      sg=infrastructure_stack.ecsSecurityGroup
+# )
 
 app.synth()
