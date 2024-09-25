@@ -50,17 +50,17 @@ class KeycloakInfrastructureStack(Stack):
         # ALB SecurityGroup
         lbSecurityGroup = ec2.SecurityGroup(self, 'LBSecurityGroup',
                                             vpc=vpc,
-                                            description='Allow HTTP traffic to ALB',
+                                            description='ALB Securitygroup: Allow HTTP traffic to ALB',
                                             allow_all_outbound=True
                                             )
         # lbSecurityGroup.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(443), 'Allow HTTPS traffic from anywhere')
-        lbSecurityGroup.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(80), 'Allow HTTP traffic from anywhere')
+        lbSecurityGroup.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(80), 'ALB Securitygroup: Allow HTTP traffic from anywhere')
         
         
         # ECS SecurityGroup
         self.ecsSecurityGroup = ec2.SecurityGroup(self, 'EcsSecurityGroup',
                                                   vpc=vpc,
-                                                  description='Allow access from private network',
+                                                  description='Ecs Securitygroup: Allow access from private network',
                                                   allow_all_outbound=True
                                                   )
         self.ecsSecurityGroup.add_ingress_rule(lbSecurityGroup, ec2.Port.tcp(9000), 'Allow traffic for health checks')
@@ -70,7 +70,7 @@ class KeycloakInfrastructureStack(Stack):
         # EC2 Security Group for SSH access
         ec2_security_group = ec2.SecurityGroup(self, 'EC2SecurityGroup',
                                                vpc=vpc,
-                                               description='Allow SSH access to EC2 instance',
+                                               description='Ec2 Securitygroup: Allow SSH access to EC2 instance',
                                                allow_all_outbound=True
                                                )
         ec2_security_group.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(22), 'Allow SSH access from anywhere')
@@ -80,7 +80,7 @@ class KeycloakInfrastructureStack(Stack):
         dbSecurityGroup = ec2.SecurityGroup(self, 'MySQLSG',
                                                 vpc=vpc,
                                                 # description='Allow access to Postgresql from private network',
-                                                description='Allow access to Mysql from private network'
+                                                description='MySQL Securitygroup: Allow access to Mysql from private network'
                                                 )
         dbSecurityGroup.add_ingress_rule(self.ecsSecurityGroup, ec2.Port.tcp(3306), 'Allow mysql access from private network')
         dbSecurityGroup.add_ingress_rule(ec2_security_group, ec2.Port.tcp(3306), 'Allow EC2 to access MySQL')
@@ -144,6 +144,67 @@ class KeycloakInfrastructureStack(Stack):
                                        vpc=vpc
                                        )
         
+        # test keycloak
+        
+        ecs_task_definition = ecs.FargateTaskDefinition(self, 'TaskDefinition',
+                                                        runtime_platform=ecs.RuntimePlatform(
+                                                            operating_system_family=ecs.OperatingSystemFamily.LINUX,
+                                                            cpu_architecture=ecs.CpuArchitecture.ARM64
+                                                        ),
+                                                        cpu=512,
+                                                        memory_limit_mib=1024
+                                                        )
+        
+        
+        container = ecs_task_definition.add_container('keycloak',
+                                                      image=ecs.ContainerImage.from_registry('878518084785.dkr.ecr.us-east-1.amazonaws.com/keycloak-ecs-fargate:latest'),
+                                                      environment={
+                                                          'KC_DB_URL': f'jdbc:mysql://{self.db_instance.instance_endpoint.hostname}:3306/keycloak',
+                                                          'KEYCLOAK_ADMIN': 'admin',
+                                                          'KEYCLOAK_ADMIN_PASSWORD': 'admin',
+                                                          'KC_DB_VENDOR': 'mysql',
+                                                          'KC_DB_USER': 'dbuser',
+                                                          'KC_DB_PASSWORD': 'dbpassword',
+                                                          'KC_DB_DATABASE': 'keycloak',
+                                                          'KC_HOSTNAME_STRICT': 'false', 
+                                                      },
+                                                      port_mappings=[
+                                                          ecs.PortMapping(
+                                                              container_port=8080,
+                                                              protocol=ecs.Protocol.TCP
+                                                          )
+                                                      ],
+                                                      logging=ecs.AwsLogDriver(
+                                                          log_group=logs.LogGroup(self, 'KeycloakLogGroup',
+                                                                                  retention=logs.RetentionDays.ONE_DAY),
+                                                          stream_prefix='keycloak',
+                                                          mode=ecs.AwsLogDriverMode.NON_BLOCKING
+                                                          ),
+                                                    #   command=['start', '--optimized']  
+                                                      command=['start-dev']                               
+                                                      )
+        
+        ecs_service = ecs.FargateService(self, 'EcsService',
+                                         cluster=self.ecs_cluster,
+                                         task_definition=ecs_task_definition,
+                                         vpc_subnets=ec2.SubnetSelection(
+                                             subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS
+                                         ),
+                                         security_groups=[self.ecsSecurityGroup]
+                                         )
+        
+        ecs_service.register_load_balancer_targets(
+            ecs.EcsTarget(
+                container_name='keycloak',
+                container_port=8080,
+                new_target_group_id='ECS',
+                listener=ecs.ListenerConfig.application_listener(
+                    self.listener,
+                    protocol=elbv2.ApplicationProtocol.HTTP
+                )
+            )
+        )
+        
 
         # ##################################  test with using nginx ######################################
         # # Fargate Task Definition
@@ -199,61 +260,8 @@ class KeycloakInfrastructureStack(Stack):
         # #################################################################################################
         
         
-        # test keycloak
-        
-        ecs_task_definition = ecs.FargateTaskDefinition(self, 'TaskDefinition',
-                                                        runtime_platform=ecs.RuntimePlatform(
-                                                            operating_system_family=ecs.OperatingSystemFamily.LINUX,
-                                                            cpu_architecture=ecs.CpuArchitecture.X86_64
-                                                        ),
-                                                        cpu=512,
-                                                        memory_limit_mib=1024
-                                                        )
         
         
-        container = ecs_task_definition.add_container('keycloak',
-                                                      image=ecs.ContainerImage.from_registry('878518084785.dkr.ecr.us-east-1.amazonaws.com/keycloak-ecs-fargate:latest'),
-                                                      environment={
-                                                          'KC_DB_URL': f'jdbc:mysql://{self.db_instance.instance_endpoint.hostname}:3306/keycloak',
-                                                          'KEYCLOAK_ADMIN': 'admin',
-                                                          'KEYCLOAK_ADMIN_PASSWORD': 'admin',
-                                                          'KC_DB_VENDOR': 'mysql',
-                                                          'KC_DB_USER': 'dbuser',
-                                                          'KC_DB_PASSWORD': 'dbpassword',
-                                                          'KC_DB_DATABASE': 'keycloak',
-                                                          'KC_HOSTNAME_STRICT': 'false', 
-                                                      },
-                                                      port_mappings=[
-                                                          ecs.PortMapping(
-                                                              container_port=80,
-                                                              protocol=ecs.Protocol.TCP
-                                                          )
-                                                      ],
-                                                      logging=ecs.AwsLogDriver(
-                                                          stream_prefix='keycloak',
-                                                          log_retention=logs.RetentionDays.ONE_DAY
-                                                          ),
-                                                    #   command=['start', '--optimized']  
-                                                      command=['start-dev']                               
-                                                      )
         
-        ecs_service = ecs.FargateService(self, 'EcsService',
-                                         cluster=self.ecs_cluster,
-                                         task_definition=ecs_task_definition,
-                                         vpc_subnets=ec2.SubnetSelection(
-                                             subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS
-                                         ),
-                                         security_groups=[self.ecsSecurityGroup]
-                                         )
         
-        ecs_service.register_load_balancer_targets(
-            ecs.EcsTarget(
-                container_name='keycloak',
-                container_port=80,
-                new_target_group_id='ECS',
-                listener=ecs.ListenerConfig.application_listener(
-                    self.listener,
-                    protocol=elbv2.ApplicationProtocol.HTTP
-                )
-            )
-        )
+        
